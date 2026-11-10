@@ -377,9 +377,9 @@
             <div id="adminLockScreen" class="bg-white rounded-2xl shadow-lg border border-shopify-border p-8 sm:p-12 text-center max-w-lg mx-auto">
                 <div class="w-14 h-14 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-xs">🔒</div>
                 <h3 class="text-xl sm:text-2xl font-extrabold text-shopify-darkGreen mb-2">Workshop Staff Access</h3>
-                <p class="text-xs sm:text-sm text-shopify-subtext mb-6">Restricted area for adding listings and updating order progress. Enter your staff PIN. The PIN is never shown on this page.</p>
+                <p class="text-xs sm:text-sm text-shopify-subtext mb-6">Restricted area. Staff can view and update order status. Admin has full access including delete.</p>
                 <div class="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
-                    <input type="password" id="adminPinInput" placeholder="Staff PIN" class="w-full bg-shopify-bg border border-shopify-border rounded-xl px-4 py-3 text-sm text-center font-mono focus:outline-none focus:border-shopify-green" autocomplete="off">
+                    <input type="password" id="adminPinInput" placeholder="Enter PIN" class="w-full bg-shopify-bg border border-shopify-border rounded-xl px-4 py-3 text-sm text-center font-mono focus:outline-none focus:border-shopify-green" autocomplete="off">
                     <button onclick="verifyAdminPin()" class="bg-shopify-darkGreen hover:bg-shopify-hover text-white font-bold px-6 py-3 rounded-xl text-xs sm:text-sm transition-all shadow-md shrink-0">
                         Unlock
                     </button>
@@ -2546,6 +2546,7 @@
         let selectedVariantName = '';
         let currentPayOption = 'full';
         let isAdminUnlocked = localStorage.getItem('tnf_admin_unlocked') === 'true';
+        let adminRole = localStorage.getItem('tnf_admin_role') || ''; // 'admin' or 'staff' 
 
         // DOM Loaded
         document.addEventListener('DOMContentLoaded', () => {
@@ -3109,16 +3110,46 @@ if (searchInputEl) searchInputEl.value = '';
             showToast(`Payment notification sent to workshop! ID: ${newOrder.id}`);
         }
 
-        function checkoutWhatsApp() {
+        function checkoutWhatsApp(name, phone) {
             if (cart.length === 0) {
                 showToast("Your bag is empty.");
                 return;
             }
+            const customerName = (name || "WhatsApp Customer").trim();
+            const customerPhone = (phone || "via WhatsApp").trim();
+            const orderId = "TNF-" + Math.floor(1000 + Math.random() * 9000);
             const summary = cart.map(i => `• ${i.qty}x ${i.name} (${i.variant}) - KSh ${(i.price * i.qty).toLocaleString()}`).join('\n');
             const total = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
-            const msg = `*NEW STORE ORDER - TRUE NORTH FURNITURE*\n\n${summary}\n\n*Total:* KSh ${total.toLocaleString()}\n\nPlease confirm delivery and M-Pesa payment details.`;
+
+            const newOrder = {
+                id: orderId,
+                name: customerName,
+                phone: customerPhone,
+                date: new Date().toISOString().split('T')[0],
+                items: cart.map(i => `${i.qty}x ${i.name} (${i.variant})`).join(', '),
+                total: total,
+                status: "Awaiting Payment",
+                payMethod: "WhatsApp Order"
+            };
+            orders.unshift(newOrder);
+            localStorage.setItem('tnf_orders', JSON.stringify(orders));
+            saveOrderToSheet(newOrder);
+            if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+
+            const msg = `*NEW STORE ORDER - TRUE NORTH FURNITURE*\n\n` +
+                        `*Order ID:* ${orderId}\n` +
+                        `*Name:* ${customerName}\n` +
+                        `*Phone:* ${customerPhone}\n\n` +
+                        `${summary}\n\n` +
+                        `*Total:* KSh ${total.toLocaleString()}\n\n` +
+                        `Please confirm delivery and M-Pesa payment details.\n` +
+                        `Paybill: 400200  Account: 8024114  Reference: ${orderId}`;
             window.open(`https://wa.me/254712878386?text=${encodeURIComponent(msg)}`, '_blank');
+            cart = [];
+            saveCart();
+            updateCartUI();
             toggleCartDrawer();
+            showToast(`Order ${orderId} created (Awaiting Payment).`);
         }
 
         function checkoutWhatsAppFromModal() {
@@ -3128,7 +3159,7 @@ if (searchInputEl) searchInputEl.value = '';
                 showToast("Please enter your name and phone number.");
                 return;
             }
-            checkoutWhatsApp();
+            checkoutWhatsApp(name, phone);
             closeCheckoutModal();
         }
 
@@ -3183,7 +3214,8 @@ if (searchInputEl) searchInputEl.value = '';
             }
         }
 
-        const STAFF_PIN = "TNF2026Secure"; // Change this line to set your own PIN. Never displayed on the page.
+        const ADMIN_PIN = "TNF2026Secure"; // Full access including delete. Change as needed.
+        const STAFF_PIN = "TNFStaff2026";  // View + update status only. No delete.
 
         function requestQuoteForProduct() {
             if (!currentModalProduct) return;
@@ -3198,11 +3230,24 @@ if (searchInputEl) searchInputEl.value = '';
                 var input = document.getElementById('adminPinInput');
                 if (!input) { alert('PIN field not found'); return; }
                 var pin = (input.value || '').trim();
-                if (pin === STAFF_PIN) {
+                if (pin === ADMIN_PIN) {
                     isAdminUnlocked = true;
-                    try { localStorage.setItem('tnf_admin_unlocked', 'true'); } catch (e) {}
+                    adminRole = 'admin';
+                    try {
+                        localStorage.setItem('tnf_admin_unlocked', 'true');
+                        localStorage.setItem('tnf_admin_role', 'admin');
+                    } catch (e) {}
                     checkAdminSession();
-                    showToast("Workshop admin portal unlocked successfully.");
+                    showToast("Admin portal unlocked (full access).");
+                } else if (pin === STAFF_PIN) {
+                    isAdminUnlocked = true;
+                    adminRole = 'staff';
+                    try {
+                        localStorage.setItem('tnf_admin_unlocked', 'true');
+                        localStorage.setItem('tnf_admin_role', 'staff');
+                    } catch (e) {}
+                    checkAdminSession();
+                    showToast("Staff portal unlocked (view & update status).");
                 } else {
                     showToast("Incorrect PIN. Try again.");
                     input.value = '';
@@ -3215,9 +3260,11 @@ if (searchInputEl) searchInputEl.value = '';
 
         function lockAdminSession() {
             isAdminUnlocked = false;
+            adminRole = '';
             localStorage.setItem('tnf_admin_unlocked', 'false');
+            localStorage.setItem('tnf_admin_role', '');
             checkAdminSession();
-            showToast("Admin portal locked.");
+            showToast("Portal locked.");
         }
 
         function renderAdminDashboard() {
@@ -3239,6 +3286,7 @@ if (searchInputEl) searchInputEl.value = '';
                     <td class="p-3 font-extrabold text-shopify-darkGreen">KSh ${o.total.toLocaleString()}</td>
                     <td class="p-3">
                         <select onchange="updateOrderStatus(${index}, this.value)" class="bg-shopify-bg border border-shopify-border rounded-lg p-1.5 text-xs font-semibold focus:outline-none">
+                            <option value="Awaiting Payment" ${o.status === 'Awaiting Payment' ? 'selected' : ''}>Awaiting Payment</option>
                             <option value="Order Received" ${o.status === 'Order Received' ? 'selected' : ''}>Order Received</option>
                             <option value="Timber Selected" ${o.status === 'Timber Selected' ? 'selected' : ''}>Timber Selected</option>
                             <option value="In Assembly" ${o.status === 'In Assembly' ? 'selected' : ''}>In Assembly</option>
@@ -3247,11 +3295,54 @@ if (searchInputEl) searchInputEl.value = '';
                         </select>
                     </td>
                     <td class="p-3 text-right">
-                        <button onclick="deleteOrder(${index})" class="text-red-500 hover:text-red-700 font-bold p-1">Delete</button>
+                        <button onclick="printOrderSlip(${index})" class="text-shopify-darkGreen hover:text-shopify-green font-bold p-1 mr-2">Print</button>
+                        ${adminRole === 'admin' ? `<button onclick="deleteOrder(${index})" class="text-red-500 hover:text-red-700 font-bold p-1">Delete</button>` : '<span class="text-shopify-subtext text-[10px]">Staff view</span>'}
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        function printOrderSlip(index) {
+            const o = orders[index];
+            if (!o) return;
+            const win = window.open('', '_blank');
+            win.document.write(`
+                <html><head><title>Order ${o.id}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 30px; max-width: 600px; margin: auto; }
+                    h1 { color: #0d5c3d; font-size: 22px; margin-bottom: 4px; }
+                    .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+                    td { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 14px; }
+                    .label { color: #666; width: 140px; }
+                    .total { font-size: 18px; font-weight: bold; color: #0d5c3d; }
+                    .pay { background: #f4f7f5; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 13px; }
+                    @media print { body { padding: 10px; } }
+                </style></head><body>
+                <h1>True North Furniture</h1>
+                <div class="sub">Order Slip • Kiambu Workshop</div>
+                <table>
+                    <tr><td class="label">Order ID</td><td><strong>${o.id}</strong></td></tr>
+                    <tr><td class="label">Date</td><td>${o.date}</td></tr>
+                    <tr><td class="label">Customer</td><td>${o.name}</td></tr>
+                    <tr><td class="label">Phone</td><td>${o.phone}</td></tr>
+                    <tr><td class="label">Items</td><td>${o.items}</td></tr>
+                    <tr><td class="label">Payment</td><td>${o.payMethod}</td></tr>
+                    <tr><td class="label">Status</td><td>${o.status}</td></tr>
+                    <tr><td class="label">Total</td><td class="total">KSh ${Number(o.total).toLocaleString()}</td></tr>
+                </table>
+                <div class="pay">
+                    <strong>M-Pesa Payment</strong><br>
+                    Paybill: 400200<br>
+                    Account: 8024114<br>
+                    Reference: ${o.id}
+                </div>
+                <p style="margin-top:30px;font-size:12px;color:#888;">Thank you for choosing True North Furniture.</p>
+                <script>window.onload = () => { window.print(); }<\/script>
+                </body></html>
+            `);
+            win.document.close();
         }
 
         function updateOrderStatus(index, newStatus) {

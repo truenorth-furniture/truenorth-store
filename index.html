@@ -3215,7 +3215,7 @@ if (searchInputEl) searchInputEl.value = '';
         }
 
         const ADMIN_PIN = "TNF2026Secure"; // Full access including delete. Change as needed.
-        const STAFF_PIN = "TNFStaff2026";  // View + update status only. No delete.
+        const STAFF_PIN = "#TNFyaGOD";  // View + update status only. No delete.
 
         function requestQuoteForProduct() {
             if (!currentModalProduct) return;
@@ -3296,6 +3296,7 @@ if (searchInputEl) searchInputEl.value = '';
                     </td>
                     <td class="p-3 text-right">
                         <button onclick="printOrderSlip(${index})" class="text-shopify-darkGreen hover:text-shopify-green font-bold p-1 mr-2">Print</button>
+                        <button onclick="printReceipt(${index})" class="text-amber-700 hover:text-amber-900 font-bold p-1 mr-2">Receipt</button>
                         ${adminRole === 'admin' ? `<button onclick="deleteOrder(${index})" class="text-red-500 hover:text-red-700 font-bold p-1">Delete</button>` : '<span class="text-shopify-subtext text-[10px]">Staff view</span>'}
                     </td>
                 `;
@@ -3340,6 +3341,52 @@ if (searchInputEl) searchInputEl.value = '';
                 </div>
                 <p style="margin-top:30px;font-size:12px;color:#888;">Thank you for choosing True North Furniture.</p>
                 <script>window.onload = () => { window.print(); }<\/script>
+                </body></html>
+            `);
+            win.document.close();
+        }
+
+        function printReceipt(index) {
+            const o = orders[index];
+            if (!o) return;
+            const win = window.open('', '_blank');
+            const paid = !['Awaiting Payment', ''].includes(o.status);
+            win.document.write(`
+                <html><head><title>Receipt ${o.id}</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; padding: 20px; max-width: 380px; margin: auto; }
+                    .center { text-align: center; }
+                    h1 { font-size: 18px; margin: 0 0 2px; }
+                    .sub { font-size: 11px; color: #555; margin-bottom: 12px; }
+                    .line { border-top: 1px dashed #999; margin: 10px 0; }
+                    .row { display: flex; justify-content: space-between; font-size: 13px; margin: 4px 0; }
+                    .total { font-weight: bold; font-size: 15px; }
+                    .stamp { text-align: center; margin-top: 16px; font-size: 12px; font-weight: bold; color: ${paid ? '#0d5c3d' : '#b45309'}; }
+                    @media print { body { padding: 8px; } }
+                </style></head><body>
+                <div class="center">
+                    <h1>TRUE NORTH FURNITURE</h1>
+                    <div class="sub">Kiambu Workshop • Receipt</div>
+                </div>
+                <div class="line"></div>
+                <div class="row"><span>Receipt No</span><span>${o.id}</span></div>
+                <div class="row"><span>Date</span><span>${o.date}</span></div>
+                <div class="row"><span>Customer</span><span>${o.name}</span></div>
+                <div class="row"><span>Phone</span><span>${o.phone}</span></div>
+                <div class="line"></div>
+                <div class="row"><span>Items</span></div>
+                <div style="font-size:12px;margin:6px 0;">${o.items}</div>
+                <div class="line"></div>
+                <div class="row total"><span>TOTAL</span><span>KSh ${Number(o.total).toLocaleString()}</span></div>
+                <div class="row"><span>Method</span><span>${o.payMethod}</span></div>
+                <div class="row"><span>Status</span><span>${o.status}</span></div>
+                <div class="line"></div>
+                <div class="stamp">${paid ? 'PAYMENT RECEIVED' : 'AWAITING PAYMENT'}</div>
+                <div class="center" style="margin-top:14px;font-size:11px;color:#666;">
+                    Paybill: 400200<br>Account: 8024114<br>Ref: ${o.id}<br><br>
+                    Thank you!
+                </div>
+                <script>window.onload = () => window.print();<\/script>
                 </body></html>
             `);
             win.document.close();
